@@ -1,0 +1,193 @@
+---
+title: "Agregador de Pesquisas - MacroCapital"
+author: "João Pedro V. M. Leme"
+date: '2022-05-24'
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Agregador de Pesquisas Eleitorais
+
+Este é um agregador simples de pesquisas de inteções de voto para os dois turnos das eleições presidenciais de 2022. A partir dos microdados disponibilizados pela database da Poder360, geraremos gráficos que modelam a evolução do percentual de votos de cada um dos candidatos especificados.
+
+Cabe relembrar que o código aqui demonstrado é bastante flexível, já que outros filtros podem ser adicionados/acomodados com poucas mudanças, como a seleção de institutos de pesquisa em específico (ou mesmo a exclusão pontual de alguns deles), atribuição de pesos distintos para os resultados de determinadas pesquisas (usando critérios temporais ou institucionais, p. ex.), utilização de modelos econométricos distintos (nesse exercício, utilizamos LM e LOESS), ou mesmo sua reapropriação para outras eleições locais (governador, senador, etc.).
+
+Nem todos os agregadores de pesquisa (XP, Jota, PoderData) buscam modelar a trajetória dos candidatos. Alguns simplesmente descrevem a movimentação dos resultados, ponto a ponto. Um exemplo desta formatação será dado adiante.
+
+## Preliminares: Libraries utilizadas e conexão entre o DataLake e o Google Cloud
+
+Utilizaremos aqui os microdados da Poder360, disponibilizados via BaseDosDados. Para isso, devemos instalar o pacote "basedosdados" e ativá-lo via função "library". Em seguida, precisamos criar um projeto específico no Google Cloud e inserir seu ID no argumento da função "set_billing_id". Por fim, basta fazer o download da base usando a função "bdplyr".
+
+```{r libraries e conexão}
+library("basedosdados")
+library("tidyverse")
+library("ggplot2")
+
+set_billing_id("agregadorpesquisas") #Substituir no argumento o ID do projeto no GoogleCloud
+
+query <- bdplyr("br_poder360_pesquisas.microdados")
+```
+
+## Criando dataframe com as informações relevantes
+
+A partir dos microdados extraídos, podemos obter o dataframe geral utilizando a função "bd_collect". Em seguida, selecionaremos as colunas/informações relevantes e construiremos um novo dataframe, que será utilizado para todas as demais operações. 
+
+```{r dataframe geral}
+df <- bd_collect(query)
+
+#Selecionando as colunas relevantes, temos:
+
+df_2 <- data.frame(df$ano, df$cargo, df$data, df$data_referencia,
+                   df$instituto, df$turno, df$descricao_cenario,
+                   df$nome_candidato, df$percentual)
+
+names(df_2) <- c("ano", "cargo", "data", "data_ref", "instituto", "turno",
+                 "descricao_cenario", "candidato", "percentual")
+
+```
+
+## 1º Turno
+
+A partir do novo dataframe, selecionaremos um subset que filtre as informações relevantes para o cenário eleitoral que se quer testar. No caso das eleições presidenciais de 2022, temos interesse no desempenho de ***4 candidaturas (Lula, Jair Bolsonaro, Ciro Gomes e Simone Tebet)*** em pesquisas de intenção de voto ***estimuladas*** feitas desde ***1º de janeiro de 2021***.
+
+```{r subset 1º turno}
+df_3 <- subset(df_2, ano >= 2022 & turno == 1 & cargo == "presidente" & 
+                     percentual >= 1 & (candidato %in% c("Bolsonaro" , "Lula",
+                                                         "Ciro", "Simone Tebet")
+                   | is.na(candidato)) & (descricao_cenario %in% c(
+                        "cenário 2 - estimulado - 1º turno", 
+                     "cenário 2 - estimulada - 1º turno",
+                     "cenário 3 - estimulada - 1º turno",
+                     "cenário 4 - estimulada = 1º turno") | 
+                        is.na(descricao_cenario)) & data >= "2021-01-01")
+```
+
+Depois de selecionado o subset, podemos criar um novo dataframe sumarizando as informações relevantes para a construção dos gráficos (instituto responsável, data de publicação, candidato e percentual). Por fim, utilizaremos a função "as.Date" na coluna de data de publicação para evitar problemas no plot do gráfico.
+
+```{r dataframe final 1º turno}
+df_4 <- data.frame(df_3$instituto, df_3$data, df_3$candidato, df_3$percentual)
+
+names(df_4) <- c("instituto", "data", "candidato", "percentual")
+
+df_4$data <- as.Date(df_4$data)
+```
+
+## Criando os gráficos - 1º Turno - Modelo LOESS
+
+```{r código loess 1º turno}
+group.colors <- c("Lula" = "red", "Bolsonaro" = "blue", "Ciro" = "dark green",
+                  "Simone Tebet" = "purple")
+
+grafico_1turno <- ggplot(df_4, aes(x=data, y=percentual, colour=candidato)) +  
+                  geom_point() + 
+                  stat_smooth(data=subset(df_4,candidato == "Lula"), method = "loess", 
+                        size = 1, se = T, colour = "red") + 
+                  stat_smooth(data=subset(df_4,candidato == "Bolsonaro"), method = "loess", 
+                        size = 1, se = T, colour = "blue" ) +
+                  stat_smooth(data=subset(df_4,candidato == "Ciro"), method = "loess", 
+                        size = 1, se = T, colour = "dark green") +
+                  stat_smooth(data=subset(df_4,candidato == "Simone Tebet"), method = "loess", 
+                        size = 1, se = T, colour = "purple") +
+                  scale_color_manual(values = group.colors)
+```
+
+Plotando, temos:
+
+```{r loess 1º turno, echo=FALSE}
+grafico_1turno
+```
+
+## Criando os gráficos - - 1º Turno - Modelo LM
+
+```{r código lm 1º turno}
+
+group.colors <- c("Lula" = "red", "Bolsonaro" = "blue", "Ciro" = "dark green", "Simone Tebet" = "purple")
+
+grafico_1turno_b <- ggplot(df_4, aes(x=data, y=percentual, colour=candidato)) +  
+                    geom_point() + 
+                    stat_smooth(data=subset(df_4,candidato == "Lula"), method = "lm", 
+                        size = 1, se = T, colour = "red") + 
+                    stat_smooth(data=subset(df_4,candidato == "Bolsonaro"), method = "lm", 
+                        size = 1, se = T, colour = "blue" ) +
+                    stat_smooth(data=subset(df_4,candidato == "Ciro"), method = "lm", 
+                        size = 1, se = T, colour = "dark green") +
+                    stat_smooth(data=subset(df_4,candidato == "Simone Tebet"), method = "lm", 
+                        size = 1, se = T, colour = "purple") +
+                    scale_color_manual(values = group.colors)
+```
+
+Plotando, temos:
+
+```{r lm 1º turno, echo=FALSE}
+grafico_1turno_b
+```
+
+##2º Turno
+
+Para o segundo turno, utilizaremos procedimento muito semelhante. A única diferença sensível é no corte do subset utilizado para gerar o dataframe final. Vejamos:
+
+```{r novo subset 2º turno}
+
+df_5 <-  subset(df_2, ano >= 2022 & turno == 2 & cargo == "presidente" & 
+               percentual >= 1 & (candidato %in% c("Bolsonaro" , "Lula")
+               | is.na(candidato)) & (descricao_cenario %in% 
+               c("cenário 1 - estimulado - 2º turno") | 
+               is.na(descricao_cenario)) & data >= "2021-01-01")
+```
+
+Selecionando o dataframe final:
+
+```{r dataframe final 2º turno}
+df_6 <- data.frame(df_5$instituto, df_5$data, df_5$candidato, df_5$percentual)
+
+names(df_6) <- c("instituto", "data", "candidato", "percentual")
+
+df_6$data <- as.Date(df_5$data)
+
+head(df_6)
+```
+
+## Criando os gráficos - 2º Turno - Modelo LOESS
+
+```{r código loess 2º turno}
+group.colors2 <- c("Lula" = "red", "Bolsonaro" = "blue")
+
+grafico_2turno <- ggplot(df_6, aes(x=data, y=percentual, colour=candidato)) +
+                  geom_point()+
+                  stat_smooth(data=subset(df_6, candidato == "Lula"), method = "loess",
+                  size = 1, se = T, colour = "red") +
+                  stat_smooth(data=subset(df_6, candidato == "Bolsonaro"), method = "loess",
+                  size = 1, se = T , colour = "blue") +
+                  scale_color_manual(values = group.colors2)
+```
+
+Plotando, temos:
+
+```{r loess 2º turno, echo=FALSE}
+grafico_2turno
+```
+
+## Criando os gráficos - 2º Turno - Modelo LM
+
+```{r código lm 2º turno}
+group.colors2 <- c("Lula" = "red", "Bolsonaro" = "blue")
+
+grafico_2turno_b <- ggplot(df_6, aes(x=data, y=percentual, colour=candidato)) +
+                  geom_point()+
+                  stat_smooth(data=subset(df_6, candidato == "Lula"), method = "lm",
+                  size = 1, se = T, colour = "red") +
+                  stat_smooth(data=subset(df_6, candidato == "Bolsonaro"), method = "lm",
+                  size = 1, se = T , colour = "blue") +
+                  scale_color_manual(values = group.colors2)
+```
+
+Plotando, temos:
+
+```{r lm 2º turno, echo=FALSE}
+grafico_2turno_b
+```
