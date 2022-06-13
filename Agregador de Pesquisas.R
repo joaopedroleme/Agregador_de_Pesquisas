@@ -29,10 +29,10 @@ df_3 <- subset(df_2, ano >= 2022 & turno == 1 & cargo == "presidente" &
                      percentual >= 1 & (candidato %in% c("Bolsonaro" , "Lula",
                                                          "Ciro", "Simone Tebet")
                    | is.na(candidato)) & (descricao_cenario %in% c(
-                        "cenário 2 - estimulado - 1º turno", 
-                     "cenário 2 - estimulada - 1º turno",
-                     "cenário 3 - estimulada - 1º turno",
-                     "cenário 4 - estimulada = 1º turno") | 
+                        "cenÃ¡rio 2 - estimulado - 1Âº turno", 
+                     "cenÃ¡rio 2 - estimulada - 1Âº turno",
+                     "cenÃ¡rio 3 - estimulada - 1Âº turno",
+                     "cenÃ¡rio 4 - estimulada = 1Âº turno") | 
                         is.na(descricao_cenario)) & data >= "2021-01-01")
 
 df_4 <- data.frame(df_3$instituto, df_3$data, df_3$candidato, df_3$percentual)
@@ -56,14 +56,22 @@ grafico_1turno <- ggplot(df_4, aes(x=data, y=percentual, colour=candidato)) +
                         size = 1, se = T, colour = "purple") +
                   scale_color_manual(values = group.colors)
 
+#Caso se queira adicionar a visualizaÃ§Ã£o de MÃ©dia MÃ³vel, adicionar os seguintes passos:
+# 1) library("tidyquant")
+# (...)
+# 2) Na construÃ§Ã£o do grÃ¡fico, adicionar:
+#  (...) geom_ma(aes(volume = percentual), ma_fun = EVWMA, n = 5) +
+                  # coord_x_date(xlim = c("2021-01-14", "2022-05-11"),
+                              # ylim = c(0, 55)) + (...)
+
 grafico_1turno
 
-#Subset para o 2º turno
+#Subset para o 2Âº turno
 
 df_5 <-  subset(df_2, ano >= 2022 & turno == 2 & cargo == "presidente" & 
                percentual >= 1 & (candidato %in% c("Bolsonaro" , "Lula")
                | is.na(candidato)) & (descricao_cenario %in% 
-               c("cenário 1 - estimulado - 2º turno") | 
+               c("cenÃ¡rio 1 - estimulado - 2Âº turno") | 
                is.na(descricao_cenario)) & data >= "2021-01-01")
 
 df_6 <- data.frame(df_5$instituto, df_5$data, df_5$candidato, df_5$percentual)
